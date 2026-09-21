@@ -1,0 +1,10 @@
+{
+	"id": "sheets-sync",
+	"name": "Sheets Sync",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.0",
+	"description": "Bidirectionally sync a markdown table with a Google Sheets range.",
+	"author": "",
+	"authorUrl": "",
+	"isDesktopOnly": true
+}
