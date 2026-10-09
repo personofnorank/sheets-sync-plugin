@@ -562,17 +562,27 @@ export default class SheetsSyncPlugin extends Plugin {
 				new Notice("Sheets Sync: no table found between markers in note.");
 				return;
 			}
-			// pad to the configured range size so extra remote cells are cleared
+			// Effective write size: at least the configured range (so stale remote
+			// cells are cleared), but grown to fit the table if it has expanded.
 			const dim = this.rangeDims(cfg.range);
+			const tableCols = Math.max(...rows.map((r) => r.length));
+			const writeRows = Math.max(dim.rows, rows.length);
+			const writeCols = Math.max(dim.cols, tableCols);
 			const padded = rows.map((r) => {
 				const c = r.slice();
-				while (c.length < dim.cols) c.push("");
+				while (c.length < writeCols) c.push("");
 				return c;
 			});
-			while (padded.length < dim.rows) padded.push([...Array(dim.cols).fill("")]);
+			while (padded.length < writeRows) padded.push([...Array(writeCols).fill("")]);
 
 			const token = await this.getAccessToken();
-			const resp = await fetch(this.valuesUrl(cfg) + "?valueInputOption=RAW", {
+			const writeCfg = { ...cfg, range: this.expandRange(cfg.range, writeRows, writeCols) };
+			if (writeCfg.range !== cfg.range) {
+				new Notice(
+					"Sheets Sync: table exceeds configured range; writing to " + writeCfg.range + " instead.",
+				);
+			}
+			const resp = await fetch(this.valuesUrl(writeCfg) + "?valueInputOption=RAW", {
 				method: "PUT",
 				headers: {
 					Authorization: "Bearer " + token,
@@ -638,6 +648,33 @@ export default class SheetsSyncPlugin extends Plugin {
 		const cols = Math.abs(toNum(m[3]) - toNum(m[1])) + 1;
 		const rows = Math.abs(Number(m[4]) - Number(m[2])) + 1;
 		return { rows, cols };
+	}
+
+	/**
+	 * Grow an A1 range (keeping its anchor) so it covers at least `rows` x
+	 * `cols` cells. Used when the note's table has outgrown the configured range.
+	 */
+	private expandRange(range: string, rows: number, cols: number): string {
+		const m = /^([A-Z]+)(\d+)?:([A-Z]+)(\d+)$/i.exec(range);
+		if (!m) return range;
+		const toNum = (s: string) => {
+			let n = 0;
+			for (const ch of s.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+			return n;
+		};
+		const toCol = (n: number) => {
+			let s = "";
+			while (n > 0) {
+				s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+				n = Math.floor((n - 1) / 26);
+			}
+			return s;
+		};
+		const startCol = toNum(m[1]);
+		const startRow = Number(m[2]) || 1;
+		const endCol = Math.max(toNum(m[3]), startCol + cols - 1);
+		const endRow = Math.max(Number(m[4]), startRow + rows - 1);
+		return toCol(startCol) + startRow + ":" + toCol(endCol) + endRow;
 	}
 
 	// ---- note helpers ----
