@@ -467,7 +467,15 @@ export default class SheetsSyncPlugin extends Plugin {
 
 	private async fetchRows(cfg: NoteConfig): Promise<string[][]> {
 		const token = await this.getAccessToken();
-		const resp = await fetch(this.valuesUrl(cfg), {
+		// Fetch a generously oversized window anchored at the configured range so
+		// the pull sees rows/columns added on the Sheets side beyond cfg.range.
+		// The API trims trailing empty rows/cols, so the extra span costs nothing.
+		const dim = this.rangeDims(cfg.range);
+		const wideCfg = {
+			...cfg,
+			range: this.expandRange(cfg.range, Math.max(dim.rows, 1000), Math.max(dim.cols, 50)),
+		};
+		const resp = await fetch(this.valuesUrl(wideCfg), {
 			headers: { Authorization: "Bearer " + token },
 		});
 		if (!resp.ok) throw new Error("Sheets API error " + resp.status + ": " + (await resp.text()));
